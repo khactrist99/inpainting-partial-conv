@@ -18,6 +18,7 @@ from torchvision.utils import save_image
 from torchvision import transforms
 
 from partial_conv_net import PartialConvUNet
+from net import PConvUNet
 from places2_train import unnormalize, MEAN, STDDEV
 
 def exceeds_bounds(y):
@@ -72,8 +73,9 @@ class InpaintApp(QWidget):
         self.height = 350
         self.cwd = os.getcwd()
 
-        image_num = str(image_num).zfill(8)
-        image_path = self.cwd + "/val_256/Places365_val_{}.jpg".format(image_num)
+        # image_num = str(image_num).zfill(8)
+        image_num = str(image_num).zfill(2)
+        image_path = self.cwd + "/val_256/{}.jpg".format(image_num)
 
         self.save_path = self.cwd + "/test.jpg"
         self.open_and_save_img(image_path, self.save_path)
@@ -85,17 +87,19 @@ class InpaintApp(QWidget):
         self.layout().addWidget(self.drawer)
         self.layout().addWidget(QPushButton("Inpaint!", clicked=self.inpaint))
         
-        self.img_transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize(MEAN, STDDEV)])
+        self.img_transform = transforms.Compose([transforms.Resize(size=(256,256)), transforms.ToTensor(), transforms.Normalize(MEAN, STDDEV)])
         self.mask_transform = transforms.ToTensor()
         self.device = torch.device("cpu")
 
-        model_dict = torch.load(self.cwd + "/model_e1_i56358.pth", map_location="cpu")
-        model = PartialConvUNet()
+        model_dict = torch.load(self.cwd + "/" + str(args.pth), map_location="cpu")
+        # model = PartialConvUNet()
+        model = PConvUNet()
         model.load_state_dict(model_dict["model"])
+        # model = torch.jit.load(self.cwd + "/" + str(args.pth))
         model = model.to(self.device)
 
         self.model = model
-        self.model.eval()
+        print(self.model.eval())
         
         self.show()
 
@@ -132,7 +136,8 @@ class InpaintApp(QWidget):
             output = self.model(img.to(self.device), mask.to(self.device))
 
         # unnormalize the image and output
-        output = mask * img + (1 - mask) * output
+        output = mask * img + (1 - mask) * output[0]
+        #+ (torch.ones_like(mask) - mask) * output
         grid = make_grid(unnormalize(output))
         save_image(grid, "test.jpg")
 
@@ -141,6 +146,7 @@ class InpaintApp(QWidget):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("--img", type=int, default=1)
+    parser.add_argument("--pth", type=str, default="1090000.pth")
     args = parser.parse_args()
 
     app = QApplication(sys.argv)
